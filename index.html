@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>DARAE V16 - REAL SERVER</title>
+<style>
+body{background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px}
+input{width:90%;padding:15px;background:#111;color:#fff;border:1px solid #333;border-radius:10px}
+button{width:95%;padding:15px;background:red;color:#fff;border:none;border-radius:10px;margin-top:15px;font-size:18px}
+.card{background:#111;padding:15px;border-radius:10px;margin-top:20px;text-align:right}
+</style>
+</head>
+<body>
+<h1>DARAE <span style="color:red">V16</span> REAL SERVER</h1>
+<p>فحص سيرفر حقيقي - 20 فحص</p>
+<input id="url" placeholder="https://example.com/page.php">
+<button onclick="scan()">افحص مع السيرفر الحقيقي</button>
+<div id="res"></div>
+<script>
+async function scan(){
+ let u=document.getElementById('url').value;
+ if(!u) return alert('حط رابط');
+ document.getElementById('res').innerHTML='جاري الفحص...';
+ let r=await fetch('/api/scan.js?url='+encodeURIComponent(u));
+ let j=await r.json();
+ document.getElementById('res').innerHTML='<div class=card><h2>النتيجة: '+j.score+'/100 - '+j.status+'</h2><pre>'+JSON.stringify(j.vulnerabilities,null,2)+'</pre></div>';
+}
+</script>
+</body>
+</html>
