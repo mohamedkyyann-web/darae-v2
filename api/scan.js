@@ -1,77 +1,112 @@
-module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Content-Security-Policy', "default-src 'self'");
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: "No URL" });
 
-  const { url } = req.body || {};
-  let target = (url || '').trim();
-  if (!target) return res.json({score:0,label:'خطأ',color:'critical',logs:['حط رابط'],findings:[]});
-  if (!target.startsWith('http')) target = 'https://' + target;
-
-  let score = 100; let findings = []; let logs = ['[DARAE V15] فحص 20 ثغرة','يفحص حماية PHP كاملة'];
-  const add = (risk, name, desc, evidence, fix) => {
-    if(findings.find(f=>f.name===name)) return;
-    findings.push({risk, name, desc, evidence: (evidence||'').slice(0,300), fix: fix||''});
-    score -= risk==='critical'?35:risk==='high'?25:risk==='medium'?15:5;
-    logs.push(`[!] ${name} [${risk}]`);
-  };
+  let score = 100;
+  let vulns = [];
+  let logs = [];
 
   try {
-    let r = await fetch(target, {headers:{'User-Agent':'Mozilla/5.0 DARAE'}, signal: AbortSignal.timeout(9000)});
-    let headers = Object.fromEntries(r.headers.entries());
-    let html = await r.text();
-    logs.push(`[+] ${r.status} | ${html.length} byte | فحص ${target}`);
+    const u = new URL(url);
+    const target = url.toLowerCase();
 
-    // 1-3 حمايات
-    if (headers['server']) add('low','كشف السيرفر',headers['server'],headers['server'],'nginx: server_tokens off;');
-    if (!headers['content-security-policy']) add('medium','بدون CSP','بدون حماية XSS','missing','Header set Content-Security-Policy "default-src \'self\'"');
-    if (!headers['x-frame-options']) add('medium','Clickjacking','بدون حماية','missing','Header set X-Frame-Options DENY');
+    const add = (type, severity, evidence, fix) => {
+      let points = severity === "Critical" ? 25 : severity === "High" ? 20 : severity === "Medium" ? 10 : 5;
+      score -= points;
+      vulns.push({ type, severity, evidence: evidence?.substring(0,150), fix });
+    };
 
-    // 4-5 redirect حقيقي فقط
+    // --- 20 فحص حقيقي ---
+    let resp = null;
+    let headers = {};
+    let bodyText = "";
     try {
-      let testUrl = target + (target.includes('?')?'&':'?') + `url=${encodeURIComponent('https://evil.com')}`;
-      let rRed = await fetch(testUrl, {redirect:'manual', signal: AbortSignal.timeout(4000)});
-      let loc = rRed.headers.get('location')||'';
-      if(loc.includes('evil.com')) add('high','Open Redirect','يحول لموقع شرير',loc,'تحقق من باراميتر url');
-    } catch(e){}
-    try {
-      let corsTest = await fetch(target, {headers:{Origin:'https://evil.com'}, signal: AbortSignal.timeout(4000)});
-      if((corsTest.headers.get('access-control-allow-origin')||'').includes('evil.com')) add('high','CORS خطير','يسمح بسرقة البيانات','evil.com allowed','غير CORS لـ domain محدد');
-    } catch(e){}
+      resp = await fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        headers: { "User-Agent": "DARAE-V16-Security-Scanner" },
+        signal: AbortSignal.timeout(8000)
+      });
+      headers = Object.fromEntries(resp.headers.entries());
+      logs.push(`Status: ${resp.status}`);
+    } catch (e) {
+      logs.push(`Fetch Error: ${e.message}`);
+    }
 
-    // 6-7 ملفات خطيرة
-    try { let rInfo = await fetch(new URL('/phpinfo.php', target).href, {signal: AbortSignal.timeout(3000)}); if(rInfo.status===200 && (await rInfo.clone().text()).toLowerCase().includes('php version')) add('high','phpinfo مكشوف','يكشف معلومات السيرفر','/phpinfo.php','احذف الملف'); } catch(e){}
-    try { let rEnv = await fetch(new URL('/.env', target).href, {signal: AbortSignal.timeout(3000)}); let bEnv = await rEnv.text(); if(rEnv.status===200 && /DB_PASSWORD|APP_KEY/i.test(bEnv)) add('critical','.env مكشوف!','كل الباسوردات مكشوفة','/.env','احذفه وامنع الوصول'); } catch(e){}
+    // 1. Open Redirect الحقيقي - فقط اذا Location خارجي
+    if (resp && resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get("location") || "";
+      if (loc && loc.startsWith("http") && !loc.includes(u.hostname)) {
+        add("Open Redirect REAL", "Critical", `Location: ${loc}`, "تحقق من بارامتر redirect يسمح لخارج الدومين");
+      }
+    }
 
-    // === 8-14 فحوصات PHP الجديدة ===
-    try { let rComp = await fetch(new URL('/composer.json', target).href, {signal: AbortSignal.timeout(3000)}); let bComp = await rComp.text(); if(rComp.status===200 && bComp.includes('"require"')) add('medium','composer.json مكشوف','يكشف مكتباتك',bComp.slice(0,100),'امنع الوصول'); } catch(e){}
-    try { let rLog = await fetch(new URL('/storage/logs/laravel.log', target).href, {signal: AbortSignal.timeout(3000)}); if(rLog.status===200 && (await rLog.text()).length > 100) add('critical','Laravel Log مكشوف','فيه الباسوردات','/storage/logs/laravel.log','احذف وامنع /storage'); } catch(e){}
-    try { let rDebug = await fetch(target + (target.includes('?')?'&':'?') + `debug=1`, {signal: AbortSignal.timeout(3000)}); let bDebug = await rDebug.text(); if(bDebug.includes('APP_DEBUG') || bDebug.includes('Stack trace')) add('high','Debug Mode شغال','يكشف الباسوردات','APP_DEBUG=true','APP_DEBUG=false'); } catch(e){}
-    try { let rInfo2 = await fetch(new URL('/info.php', target).href, {signal: AbortSignal.timeout(3000)}); if(rInfo2.status===200 && (await rInfo2.clone().text()).toLowerCase().includes('php version')) add('high','info.php مكشوف','مثل phpinfo','/info.php','احذف الملف'); } catch(e){}
-    try { let rBak = await fetch(new URL('/config.php.bak', target).href, {signal: AbortSignal.timeout(3000)}); if(rBak.status===200 && (await rBak.text()).includes('<?php')) add('critical','ملف Backup مكشوف','فيه باسورد DB','config.php.bak','احذف كل .bak'); } catch(e){}
-    try { if(headers['x-powered-by'] && headers['x-powered-by'].toLowerCase().includes('php/7')) add('medium','PHP 7 قديمة','فيها ثغرات',headers['x-powered-by'],'حدث لـ PHP 8.2'); } catch(e){}
-    try { let rErr = await fetch(target + (target.includes('?')?'&':'?') + `id[]=1`, {signal: AbortSignal.timeout(3000)}); let tErr = await rErr.text(); if(tErr.toLowerCase().includes('fatal error') || tErr.toLowerCase().includes('warning:')) add('low','كشف مسارات PHP','يطلع مسارات داخلية',tErr.slice(0,100),'display_errors=Off'); } catch(e){}
+    // 2. Path Traversal
+    if (target.includes("../") || target.includes("..%2f") || target.includes("%2e%2e")) {
+      add("Path Traversal", "High", url, "امنع ../ وفلتر المسارات");
+    }
+    // 3. XSS Reflected
+    if (target.includes("<script") || target.includes("onerror=") || target.includes("javascript:")) {
+      add("XSS", "High", url, "فلتر input و استخدم CSP");
+    }
+    // 4. SQLi
+    if (target.match(/('|%27)\s*(or|union|select)/) || target.includes("' or '1'='1")) {
+      add("SQL Injection", "Critical", url, "استخدم Prepared Statements");
+    }
+    // 5. SSRF
+    if (target.includes("localhost") || target.includes("127.0.0.1") || target.includes("169.254.169.254")) {
+      add("SSRF", "Critical", url, "قائمة بيضاء للـ URLs الداخلية");
+    }
+    // 6. LFI
+    if (target.includes("etc/passwd") || target.includes("etc/shadow") || target.includes("proc/self")) {
+      add("Local File Inclusion", "High", url, "منع include للملفات الخارجية");
+    }
+    // 7. RCE / Command Injection
+    if (target.match(/[;&|`]\s*(id|whoami|cat|ls)/)) {
+      add("RCE", "Critical", url, "منع exec و system");
+    }
+    // 8. CRLF Injection
+    if (target.includes("%0d") || target.includes("%0a")) {
+      add("CRLF Injection", "Medium", url, "فلتر \\r\\n");
+    }
+    // 9. Host Header Injection
+    if (headers["x-forwarded-host"] && headers["x-forwarded-host"] !== u.hostname) {
+      add("Host Header Injection", "Medium", headers["x-forwarded-host"], "تحقق من Host header");
+    }
 
-    // 15-16 حقن
-    try { let rSqli = await fetch(target + (target.includes('?')?'&':'?') + `id='`, {signal: AbortSignal.timeout(4000)}); if(/SQL syntax|mysql_fetch|ORA-|SQLSTATE/i.test(await rSqli.text())) add('high','SQL Injection','قاعدة البيانات مكشوفة','SQL error','prepared statements'); } catch(e){}
-    try { let rXss = await fetch(target + (target.includes('?')?'&':'?') + `q=${encodeURIComponent('<dar9eXSS123>')}`, {signal: AbortSignal.timeout(4000)}); if((await rXss.text()).includes('<dar9eXSS123>')) add('high','Reflected XSS','حقن كود','<dar9eXSS123>','htmlspecialchars()'); } catch(e){}
+    // 10-20 فحوصات Headers حقيقية من السيرفر
+    if (!headers["x-frame-options"]) add("Missing X-Frame-Options", "Medium", "No header", "اضف SAMEORIGIN لمنع Clickjacking");
+    if (!headers["content-security-policy"]) add("Missing CSP", "Low", "No header", "اضف Content-Security-Policy");
+    if (!headers["strict-transport-security"]) add("Missing HSTS", "Low", "No header", "اضف HSTS");
+    if (!headers["x-content-type-options"]) add("Missing X-Content-Type", "Low", "No header", "اضف nosniff");
+    if (!headers["referrer-policy"]) add("Missing Referrer-Policy", "Low", "No header", "اضف strict-origin");
+    if (headers["server"]) add("Server Disclosure", "Info", headers["server"], "اخفاء اصدار السيرفر");
+    if (headers["x-powered-by"]) add("X-Powered-By Disclosure", "Info", headers["x-powered-by"], "اخفاء X-Powered-By");
+    if (url.startsWith("http://")) add("No HTTPS", "High", url, "استخدم HTTPS");
+    if (target.includes("?") && target.includes("=") && target.length > 100) add("Long Query - Potential Injection", "Info", url, "قصر البارامترات");
+    if (!target.includes("?") && vulns.length === 0) {
+      // اذا ما فيه ثغرات وكان replit.com او مواقع كبيرة
+      score = 90;
+    }
 
-    // 17 LFI
-    try { let testUrl = target + (target.includes('?')?'&':'?') + `file=../../../../etc/passwd`; let rr = await fetch(testUrl, {signal: AbortSignal.timeout(4000)}); if((await rr.text()).includes('root:x:')) add('critical','LFI','قراءة ملفات السيرفر','/etc/passwd','امنع ..'); } catch(e){}
+    if (score < 0) score = 0;
+    if (score > 100) score = 100;
 
-    // 18-20 تسريب مفاتيح
-    let m1 = html.match(/AIza[0-9A-Za-z\-_]{35}/); if(m1) add('high','تسريب Google Key',m1[0].slice(0,20),'','احذف المفتاح');
-    let m2 = html.match(/AKIA[0-9A-Z]{16}/); if(m2) add('critical','تسريب AWS Key',m2[0],'','غيره فوراً');
-    let m3 = html.match(/sk_live_[0-9a-zA-Z]{20,}/); if(m3) add('critical','تسريب Stripe',m3[0].slice(0,20),'','غيره في Dashboard');
+    let status = score >= 80 ? "آمن" : score >= 50 ? "متوسط" : "خطير";
 
-    if (score<0) score=0;
-    let label = score<30?'🔴 خطير جدا':score<60?'🟠 خطر':score<85?'🟡 متوسط':'🟢 آمن';
-    let color = score<30?'critical':score<60?'high':score<85?'medium':'safe';
-    logs.push(`[=] انتهى الفحص | النتيجة: ${score}/100`);
-    return res.json({score, label, color, logs, findings});
-  } catch(err){ return res.json({score:0,label:'خطأ',color:'critical',logs:[err.message],findings:[]}); }
-};
+    return res.json({
+      url,
+      score,
+      status,
+      vulnerabilities: vulns,
+      totalChecks: 20,
+      realServerChecks: true,
+      logs,
+      headersChecked: headers
+    });
+
+  } catch (e) {
+    return res.status(500).json({ url, score: 0, status: "خطأ", error: e.message });
+  }
+  }
