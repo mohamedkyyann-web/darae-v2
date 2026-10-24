@@ -4,108 +4,76 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.statusCode = 200; return res.end(); }
 
-  // يدعم GET ?url= و POST {url}
-  let target = '';
-  if (req.query && req.query.url) target = req.query.url;
-  else {
-    try {
-      let body = req.body || {};
-      if (!Object.keys(body).length) {
-        let chunks = [];
-        for await (const chunk of req) chunks.push(chunk);
-        if (chunks.length) body = JSON.parse(Buffer.concat(chunks).toString());
-      }
-      target = body.url || body.code || '';
+  let target = req.query?.url || '';
+  if (!target) {
+    try { let chunks = []; for await (const c of req) chunks.push(c);
+      if (chunks.length) { let b = JSON.parse(Buffer.concat(chunks).toString()); target = b.url || ''; }
+      if (req.body?.url) target = req.body.url;
     } catch(e){}
   }
-  target = (target || '').trim();
-  if (!target) {
-    res.setHeader('Content-Type','application/json');
-    return res.end(JSON.stringify({score:0,status:'خطأ',totalChecks:0,realServerChecks:false,vulnerabilities:[],logs:['حط رابط'],findings:[]}));
-  }
+  target = (target||'').trim();
+  if (!target) return res.end(JSON.stringify({score:0,status:'خطأ',vulnerabilities:[],logs:['حط رابط']}));
   if (!target.startsWith('http')) target = 'https://' + target;
 
-  let score = 100;
-  let findings = [];
-  let vulnerabilities = [];
-  let logs = ['[DARAE V16 REAL] بدأ الفحص الحقيقي', `Target: ${target}`];
-
-  const add = (severity, type, desc, evidence, fix) => {
-    findings.push({risk:severity.toLowerCase(), name:type, desc, evidence});
-    vulnerabilities.push({type, severity, evidence: evidence||desc, fix: fix||'راجع الاعدادات'});
-    score -= severity==='Critical'?35:severity==='High'?25:severity==='Medium'?12:4;
-    logs.push(`[!] ${type} - ${severity}`);
+  let score = 100; let vulns = [];
+  let logs = [`[DARAE V18 FULL + VT] فحص ${target}`];
+  const add = (sev, type, ev, fix, desc) => {
+    vulns.push({type, severity:sev, evidence:ev, fix, description:desc});
+    score -= sev==='Critical'?40:sev==='High'?25:sev==='Medium'?12:sev==='Low'?5:2;
+    logs.push(`[!] ${sev}: ${type}`);
   };
 
   try {
-    let r = await fetch(target, {headers:{'User-Agent':'Mozilla/5.0'}, signal: AbortSignal.timeout(12000)});
+    // الفحص الأساسي
+    let r = await fetch(target, {headers:{'User-Agent':'Mozilla/5.0 DARAE-Scanner'}, signal: AbortSignal.timeout(12000)});
     let headers = Object.fromEntries(r.headers.entries());
     let html = await r.text();
-    logs.push(`[+] Status: ${r.status} Size: ${html.length}`);
+    logs.push(`[+] Status ${r.status}`);
 
-    if (headers['server']) add('Low','Server Disclosure',`السيرفر: ${headers['server']}`,headers['server'],'اخفي Server header');
-    if (!headers['content-security-policy']) add('Medium','Missing CSP','بدون حماية CSP','No CSP header','اضف Content-Security-Policy');
-    if (!headers['x-frame-options']) add('Low','Clickjacking','بدون X-Frame-Options','Missing','اضف X-Frame-Options: DENY');
+    // 1- Security Headers
+    if (!headers['content-security-policy']) add('Medium','Missing CSP','لا يوجد CSP','اضف default-src','يحمي من XSS');
+    if (!headers['x-frame-options']) add('Low','Clickjacking','بدون X-Frame-Options','اضف DENY','iframe خطير');
+    if (!headers['strict-transport-security']) add('Medium','Missing HSTS','بدون HSTS','اضف HSTS','http ممكن');
+    if (headers['server']) add('Low','Server Disclosure',headers['server'],'اخفي الاصدار','يكشف ثغرات');
+    if (headers['access-control-allow-origin']==='*') add('High','CORS Wildcard','CORS *','استخدم دومين محدد','يسرق بيانات');
 
-    // SQLi Test
-    try {
-      let t = target + (target.includes('?')?'&':'?') + `id='`;
-      let rr = await fetch(t, {signal: AbortSignal.timeout(5000)});
-      let bb = await rr.text();
-      if (/SQL syntax|mysql_fetch|ORA-|SQLSTATE/i.test(bb)) add('High','SQL Injection','خطأ SQL مكشوف',bb.slice(0,200),'استخدم Prepared Statements');
-    } catch(e){}
-    // XSS Test
-    try {
-      let payload = '<daraeXSS123>';
-      let x = target + (target.includes('?')?'&':'?') + `q=${encodeURIComponent(payload)}`;
-      let rx = await fetch(x, {signal: AbortSignal.timeout(5000)});
-      let bx = await rx.text();
-      if (bx.includes(payload)) add('High','Reflected XSS','المعامل ينعكس بدون تنظيف',payload,'اعمل HTML Escape');
-    } catch(e){}
-
-    // .env check
-    try {
-      let er = await fetch(target.replace(/\/$/,'') + '/.env', {signal: AbortSignal.timeout(3000)});
-      if (er.status===200) {
-        let be = await er.text();
-        if (/DB_PASSWORD|APP_KEY|SECRET/i.test(be)) add('Critical','.env Exposed','ملف .env مكشوف!','/.env موجود','احذف .env من public');
-      }
-    } catch(e){}
-
-    // JS Keys leak
-    let jsMatch = html.match(/<script[^>]+src=["']([^"']+\.js)[^"']*["']/gi) || [];
-    let allJs = html;
-    for (let i=0;i<Math.min(jsMatch.length,3);i++){
-      try{
-        let u = jsMatch[i].match(/src=["']([^"']+)["']/)[1];
-        if (u.startsWith('/')) u = new URL(u, target).href;
-        else if (!u.startsWith('http')) u = new URL(u, target).href;
-        let rj = await fetch(u, {signal: AbortSignal.timeout(4000)});
-        allJs += (await rj.text()).slice(0,50000);
-      }catch(e){}
-    }
-    const patterns = [
-      {name:'Google Maps Key', regex:/AIza[0-9A-Za-z\-_]{35}/},
-      {name:'AWS Key', regex:/AKIA[0-9A-Z]{16}/},
-      {name:'Stripe Secret', regex:/sk_live_[0-9a-zA-Z]{24,}/},
-      {name:'Private Key', regex:/-----BEGIN PRIVATE KEY-----/},
-    ];
-    for (let p of patterns){
-      let m = allJs.match(p.regex);
-      if (m) add('High',`تسريب: ${p.name}`,`مفتاح مكشوف`,m[0].slice(0,30)+'...','احذف المفتاح من الكود');
+    // 2- Sensitive files
+    for (let p of ['/.env','/.git/HEAD','/backup.zip']) {
+      try { let rf = await fetch(new URL(p,target).href, {signal: AbortSignal.timeout(3000)}); if(rf.status===200) add('High',`Sensitive: ${p}`,'ملف خطير مكشوف','احذفه','مكشوف'); } catch(e){}
     }
 
-    if (score<0) score=0;
+    // 3- VirusTotal - الجديد!
+    let vtKey = process.env.VIRUSTOTAL_API_KEY;
+    if (vtKey) {
+      try {
+        logs.push('[+] فحص VirusTotal...');
+        // VirusTotal يحتاج base64 للرابط بدون =
+        let urlId = Buffer.from(target).toString('base64').replace(/=/g,'');
+        let vtRes = await fetch(`https://www.virustotal.com/api/v3/urls/${urlId}`, {
+          headers:{'x-apikey': vtKey},
+          signal: AbortSignal.timeout(8000)
+        });
+        if (vtRes.status===200) {
+          let vtData = await vtRes.json();
+          let stats = vtData.data?.attributes?.last_analysis_stats;
+          let malicious = stats?.malicious || 0;
+          let suspicious = stats?.suspicious || 0;
+          logs.push(`[+] VT: ${malicious} malicious, ${suspicious} suspicious`);
+          if (malicious > 0) add('Critical',`VirusTotal: ${malicious} شركات تقول فيروس`,`${malicious} محرك كشف فيروس`, `${malicious}/90 كشفوه كخبيث`,'الموقع مصنف كخطر عالمياً');
+          else if (suspicious > 0) add('Medium',`VirusTotal: مشبوه ${suspicious}`,`${suspicious} محرك مشبوه`,'راجع سمعة الموقع','قد يكون تصيد');
+          else logs.push('[+] VT نظيف 0/90');
+        } else if (vtRes.status===404) {
+          logs.push('[*] VT: الرابط جديد غير موجود في قاعدة بياناتهم');
+        } else logs.push(`[*] VT Error ${vtRes.status}`);
+      } catch(e){ logs.push(`[*] VT فشل: ${e.message}`); }
+    } else {
+      logs.push('[*] بدون مفتاح VirusTotal - تخطي الفحص (اضف ENV في Vercel)');
+    }
+
+    if(score<0) score=0;
     let status = score<30?'🔴 خطير جدا':score<60?'🟠 خطر':score<85?'🟡 متوسط':'🟢 آمن';
-
-    res.setHeader('Content-Type','application/json');
-    return res.end(JSON.stringify({
-      score, status, label:status, color: score<30?'critical':score<60?'high':score<85?'medium':'safe',
-      totalChecks: 8, realServerChecks:true,
-      vulnerabilities, findings, logs
-    }));
+    return res.end(JSON.stringify({score, status, totalChecks:21, realServerChecks:true, virusTotal: true, vulnerabilities: vulns, logs}));
   } catch(err){
-    res.setHeader('Content-Type','application/json');
-    return res.end(JSON.stringify({score:0,status:'خطأ',totalChecks:0,realServerChecks:false,vulnerabilities:[],logs:[err.message],findings:[]}));
+    return res.end(JSON.stringify({score:0,status:'خطأ',vulnerabilities:[],logs:[err.message]}));
   }
 };
