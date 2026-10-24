@@ -1,82 +1,111 @@
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "No URL" });
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 200;
+    return res.end();
+  }
+
+  // قراءة الـ body يدوياً لـ Vercel
+  let body = {};
+  try {
+    if (req.body) body = req.body;
+    else {
+      let chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      if (chunks.length) body = JSON.parse(Buffer.concat(chunks).toString());
+    }
+  } catch(e){}
+
+  const { url, code } = body || {};
+  let target = (url || '').trim();
+  if (!target && !code) {
+    res.setHeader('Content-Type','application/json');
+    return res.end(JSON.stringify({score:0,label:'خطأ',color:'critical',logs:['حط رابط'],findings:[]}));
+  }
+  if (target && !target.startsWith('http')) target = 'https://' + target;
 
   let score = 100;
-  let vulns = [];
-  let logs = [];
+  let findings = [];
+  let logs = ['[DARAE V11] بدأ الفحص','فحص تسريب المفاتيح مفعل'];
+
+  const add = (risk, name, desc, evidence) => {
+    findings.push({risk, name, desc, evidence});
+    score -= risk==='critical'||risk==='high'?30:risk==='medium'?15:5;
+    logs.push(`[!] ${name}`);
+  };
 
   try {
-    const u = new URL(url);
-    const target = url.toLowerCase();
+    if (target) {
+      let r = await fetch(target, {headers:{'User-Agent':'Mozilla/5.0'}, signal: AbortSignal.timeout(10000)});
+      let headers = Object.fromEntries(r.headers.entries());
+      let html = await r.text();
+      logs.push(`[+] حالة: ${r.status}`);
+      logs.push(`[+] حجم الصفحة: ${html.length}`);
 
-    const add = (type, severity, evidence, fix) => {
-      let points = severity === "Critical" ? 25 : severity === "High" ? 20 : severity === "Medium" ? 10 : 5;
-      score -= points;
-      vulns.push({ type, severity, evidence: evidence?.substring(0,150), fix });
-    };
+      if (headers['server']) add('low','كشف السيرفر',`السيرفر يكشف نفسه`,headers['server']);
+      if (!headers['content-security-policy']) add('medium','بدون CSP','الموقع بدون حماية CSP','مافي header');
+      if (!headers['x-frame-options']) add('low','Clickjacking','بدون حماية','DENY missing');
 
-    let resp = null;
-    let headers = {};
-    try {
-      resp = await fetch(url, {
-        method: "GET",
-        redirect: "manual",
-        headers: { "User-Agent": "DARAE-V16-Security-Scanner" },
-        signal: AbortSignal.timeout(8000)
-      });
-      headers = Object.fromEntries(resp.headers.entries());
-      logs.push(`Status: ${resp.status}`);
-    } catch (e) {
-      logs.push(`Fetch Error: ${e.message}`);
-    }
+      try {
+        let testUrl = target + (target.includes('?')?'&':'?') + `id='`;
+        let resTest = await fetch(testUrl, {signal: AbortSignal.timeout(4000)});
+        let bodyTest = await resTest.text();
+        if (/SQL syntax|mysql_fetch|ORA-|SQLSTATE/i.test(bodyTest)) add('high','SQL Injection','خطأ SQL مكشوف',bodyTest.slice(0,200));
+      } catch(e){}
+      try {
+        let payload = '<dar9eXSS123>';
+        let xssUrl = target + (target.includes('?')?'&':'?') + `q=${encodeURIComponent(payload)}`;
+        let rXss = await fetch(xssUrl, {signal: AbortSignal.timeout(4000)});
+        let bXss = await rXss.text();
+        if (bXss.includes(payload) && !bXss.includes('&lt;dar9eXSS123')) add('high','Reflected XSS','الكود ينعكس بدون تنظيف',payload);
+      } catch(e){}
 
-    if (resp && resp.status >= 300 && resp.status < 400) {
-      const loc = resp.headers.get("location") || "";
-      if (loc && loc.startsWith("http") && !loc.includes(u.hostname)) {
-        add("Open Redirect REAL", "Critical", `Location: ${loc}`, "تحقق من بارامتر redirect يسمح لخارج الدومين");
+      let jsUrls = [];
+      let regex = /<script[^>]+src=["']([^"']+\.js[^"']*)["']/gi;
+      let m;
+      while ((m = regex.exec(html)) !== null) {
+        let jsUrl = m[1];
+        if (jsUrl.startsWith('/')) jsUrl = target.replace(/\/$/,'') + jsUrl;
+        else if (!jsUrl.startsWith('http')) jsUrl = target.replace(/\/$/,'') + '/' + jsUrl;
+        jsUrls.push(jsUrl);
+        if (jsUrls.length >= 5) break;
       }
+      logs.push(`[+] فحص ${jsUrls.length} ملفات JS`);
+      let allJsContent = html;
+      for (let ju of jsUrls) {
+        try { let rJs = await fetch(ju, {signal: AbortSignal.timeout(4000)}); allJsContent += "\n" + (await rJs.text()).slice(0,50000); } catch(e){}
+      }
+      const patterns = [
+        {name:'Google Maps Key', regex:/AIza[0-9A-Za-z\-_]{35}/},
+        {name:'AWS Access Key', regex:/AKIA[0-9A-Z]{16}/},
+        {name:'Stripe Secret', regex:/sk_live_[0-9a-zA-Z]{24,}/},
+        {name:'Private Key', regex:/-----BEGIN PRIVATE KEY-----/},
+      ];
+      for (let p of patterns) {
+        let match = allJsContent.match(p.regex);
+        if (match) add('high',`تسريب: ${p.name}`,`وجدنا مفتاح مكشوف`,match[0].slice(0,30)+'...');
+      }
+      try {
+        let envUrl = target.replace(/\/$/,'') + '/.env';
+        let rEnv = await fetch(envUrl, {signal: AbortSignal.timeout(3000)});
+        if (rEnv.status===200) {
+          let bEnv = await rEnv.text();
+          if (/DB_PASSWORD|APP_KEY|SECRET/i.test(bEnv)) add('critical','ملف .env مكشوف!','فيه باسوردات','/.env موجود');
+        }
+      } catch(e){}
     }
 
-    if (target.includes("../") || target.includes("..%2f") || target.includes("%2e%2e")) {
-      add("Path Traversal", "High", url, "امنع ../ وفلتر المسارات");
-    }
-    if (target.includes("<script") || target.includes("onerror=") || target.includes("javascript:")) {
-      add("XSS", "High", url, "فلتر input و استخدم CSP");
-    }
-    if (target.match(/('|%27)\s*(or|union|select)/) || target.includes("' or '1'='1")) {
-      add("SQL Injection", "Critical", url, "استخدم Prepared Statements");
-    }
-    if (target.includes("localhost") || target.includes("127.0.0.1") || target.includes("169.254.169.254")) {
-      add("SSRF", "Critical", url, "قائمة بيضاء للـ URLs الداخلية");
-    }
-    if (target.includes("etc/passwd") || target.includes("etc/shadow") || target.includes("proc/self")) {
-      add("Local File Inclusion", "High", url, "منع include للملفات الخارجية");
-    }
-    if (target.match(/[;&|`]\s*(id|whoami|cat|ls)/)) {
-      add("RCE", "Critical", url, "منع exec و system");
-    }
-    if (target.includes("%0d") || target.includes("%0a")) {
-      add("CRLF Injection", "Medium", url, "فلتر \\r\\n");
-    }
-    if (!headers["x-frame-options"]) add("Missing X-Frame-Options", "Medium", "No header", "اضف SAMEORIGIN");
-    if (!headers["content-security-policy"]) add("Missing CSP", "Low", "No header", "اضف CSP");
-    if (!headers["strict-transport-security"]) add("Missing HSTS", "Low", "No header", "اضف HSTS");
-    if (!headers["x-content-type-options"]) add("Missing X-Content-Type", "Low", "No header", "اضف nosniff");
-    if (headers["server"]) add("Server Disclosure", "Info", headers["server"], "اخفاء اصدار السيرفر");
-    if (headers["x-powered-by"]) add("X-Powered-By Disclosure", "Info", headers["x-powered-by"], "اخفاء X-Powered-By");
-    if (url.startsWith("http://")) add("No HTTPS", "High", url, "استخدم HTTPS");
-    if (!target.includes("?") && vulns.length === 0) {
-      score = 90;
-    }
+    if (score<0) score=0;
+    let label = score<30?'🔴 خطير جدا':score<60?'🟠 خطر':score<85?'🟡 متوسط':'🟢 آمن';
+    let color = score<30?'critical':score<60?'high':score<85?'medium':'safe';
 
-    if (score < 0) score = 0;
-    if (score > 100) score = 100;
-    let status = score >= 80 ? "آمن ✅" : score >= 50 ? "متوسط ⚠️" : "خطير 🔴";
-
-    return res.json({ url, score, status, vulnerabilities: vulns, totalChecks: 20, realServerChecks: true, logs, headersChecked: headers });
-  } catch (e) {
-    return res.status(500).json({ url, score: 0, status: "خطأ", error: e.message });
+    res.setHeader('Content-Type','application/json');
+    return res.end(JSON.stringify({score, label, color, logs, findings}));
+  } catch(err){ 
+    res.setHeader('Content-Type','application/json');
+    return res.end(JSON.stringify({score:0,label:'خطأ',color:'critical',logs:[err.message],findings:[]})); 
   }
-  }
+};
