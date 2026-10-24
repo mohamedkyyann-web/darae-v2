@@ -1,40 +1,83 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DARAE V16 REAL SERVER</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARAE - فاحص حماية المواقع</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:system-ui;text-align:center;padding:15px}
-h1{font-size:28px}h1 span{color:#ff0000}
-.tabs{display:flex;gap:8px;justify-content:center;margin:15px 0}
-.tab{background:#222;color:#fff;border:none;padding:10px 16px;border-radius:20px}
-.tab.active{background:#ff0000}
-input{width:100%;max-width:500px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:12px;font-size:16px}
-.btn{width:100%;max-width:500px;padding:16px;background:#ff0000;color:#fff;border:none;border-radius:12px;margin-top:12px;font-size:18px;font-weight:bold}
-.card{background:#111;border:1px solid #222;border-radius:12px;padding:15px;margin:15px auto;max-width:600px;text-align:right;white-space:pre-wrap}
+body{background:#0a0a0a; color:#fff; font-family:sans-serif; padding:20px; max-width:500px; margin:auto}
+h1{color:#00ff88; text-align:center}
+input{width:100%; padding:14px; border-radius:12px; border:1px solid #333; background:#111; color:#fff; box-sizing:border-box}
+button{width:100%; padding:14px; border-radius:12px; border:none; font-weight:bold; font-size:16px; cursor:pointer; margin-top:10px}
+#scanBtn{background:#00ff88; color:#000}
+#waBtn{background:#25D366; color:#fff; display:block; text-align:center; text-decoration:none; padding:14px; border-radius:12px; font-weight:bold; margin-top:10px}
+#codeBox{display:none; background:#111; border:1px solid #00ff88; padding:15px; border-radius:12px; margin-top:15px}
 </style>
 </head>
 <body>
-<h1>DARAE <span>V16</span> REAL SERVER</h1>
-<div class="tabs"><button class="tab">ملف</button><button class="tab">كود</button><button class="tab active">رابط وتحليل مع سيرفر</button></div>
-<input id="url" placeholder="https://example.com/page.php" value="https://replit.com">
-<button class="btn" onclick="scan()">افحص مع السيرفر الحقيقي</button>
-<div id="res"></div>
+
+<h1>🛡️ DARAE</h1>
+<p style="text-align:center; color:#888; font-size:13px">افحص موقعك في 5 ثواني</p>
+
+<input id="urlInput" type="text" placeholder="https://example.com">
+
+<button id="scanBtn">🔍 فحص سريع</button>
+
+<a id="waBtn" target="_blank">💬 توثيق واتساب - فحص عميق</a>
+<p style="font-size:11px; color:#666; text-align:center">فيديو 10 ثواني من لوحة التحكم فقط - بدون بطاقة</p>
+
+<div id="codeBox">
+  <h3 style="color:#00ff88; margin:0 0 10px 0; font-size:14px">🔓 عندك كود من واتساب؟</h3>
+  <input id="codeInput" placeholder="DARAE-XXXX">
+  <button id="activateBtn" style="background:#00ff88; color:#000; margin-top:10px">تفعيل الفحص العميق</button>
+  <p id="codeMsg" style="font-size:12px; display:none"></p>
+</div>
+
+<div id="result" style="margin-top:20px; background:#111; padding:15px; border-radius:12px; display:none"></div>
+
 <script>
-async function scan(){
- let u=document.getElementById('url').value.trim();
- if(!u){alert('حط رابط');return}
- document.getElementById('res').innerHTML='<div class=card>جاري الفحص الحقيقي من السيرفر... ⏳</div>';
- try{
-  let r=await fetch('/api/scan?url='+encodeURIComponent(u));
-  let j=await r.json();
-  let h=`<div class=card><h2>النتيجة: ${j.score}/100 - ${j.status}</h2><p>فحص: ${j.totalChecks} فحص - سيرفر حقيقي: ${j.realServerChecks?'نعم ✅':'لا'}</p>`;
-  if(j.vulnerabilities && j.vulnerabilities.length){ h+='<h3>الثغرات:</h3>'; j.vulnerabilities.forEach(v=>{h+=`<div style="background:#1a1a1a;padding:8px;margin:6px 0;border-right:3px solid ${v.severity=='Critical'?'red':'orange'}"><b>${v.type}</b> (${v.severity})<br><small>${v.evidence||''}</small><br><i style="color:#0f0">${v.fix||''}</i></div>`}); }else{ h+='<p style="color:#0f0">مافي ثغرات - آمن ✅</p>'; }
-  h+='<details><summary>السجلات</summary><pre style=text-align:left;direction:ltr;overflow:auto>'+JSON.stringify(j,null,2)+'</pre></details></div>';
-  document.getElementById('res').innerHTML=h;
- }catch(e){ document.getElementById('res').innerHTML='<div class=card style="color:red">خطأ: '+e.message+'</div>'; }
-}
+const WHATSAPP_NUMBER = "967780194210";
+
+// زر واتساب
+document.getElementById('waBtn').addEventListener('click', function(){
+  let site = document.getElementById('urlInput').value || "موقعي";
+  let msg = `السلام عليكم - دارع
+أنا صاحب موقع: ${site}
+أريد التوثيق للفحص العميق`;
+  this.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+  document.getElementById('codeBox').style.display='block';
+});
+
+// زر الفحص السريع - يتصل بـ api/scan.js حقك
+document.getElementById('scanBtn').addEventListener('click', async function(){
+  let url = document.getElementById('urlInput').value;
+  if(!url){ alert('حط رابط موقعك'); return; }
+  let resDiv = document.getElementById('result');
+  resDiv.style.display='block';
+  resDiv.innerHTML='⏳ جاري الفحص...';
+  try{
+    let r = await fetch(`/api/scan?url=${encodeURIComponent(url)}`);
+    let data = await r.json();
+    resDiv.innerHTML = `<pre style="white-space:pre-wrap; color:#00ff88">${JSON.stringify(data, null, 2)}</pre>`;
+  }catch(e){
+    resDiv.innerHTML='❌ خطأ في الفحص - تأكد من api/scan.js';
+  }
+});
+
+// تفعيل الكود
+document.getElementById('activateBtn').addEventListener('click', function(){
+  let code = document.getElementById('codeInput').value.trim().toUpperCase();
+  let msgEl = document.getElementById('codeMsg');
+  msgEl.style.display='block';
+  if(code.startsWith('DARAE-') && code.length >= 10){
+    msgEl.style.color='#00ff88';
+    msgEl.innerHTML='✅ تم التفعيل! الآن تقدر تستخدم الفحص العميق';
+  }else{
+    msgEl.style.color='#ff4444';
+    msgEl.innerHTML='❌ الكود يبدأ بـ DARAE-';
+  }
+});
 </script>
+
 </body>
 </html>
