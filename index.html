@@ -1,30 +1,39 @@
 <!DOCTYPE html>
-<html dir="rtl">
+<html dir="rtl" lang="ar">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width">
-<title>DARAE V16 - REAL SERVER</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DARAE V16 REAL SERVER</title>
 <style>
-body{background:#000;color:#fff;font-family:sans-serif;text-align:center;padding:20px}
-input{width:90%;padding:15px;background:#111;color:#fff;border:1px solid #333;border-radius:10px}
-button{width:95%;padding:15px;background:red;color:#fff;border:none;border-radius:10px;margin-top:15px;font-size:18px}
-.card{background:#111;padding:15px;border-radius:10px;margin-top:20px;text-align:right}
+*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:system-ui;text-align:center;padding:15px}
+h1{font-size:28px}h1 span{color:#ff0000}
+.tabs{display:flex;gap:8px;justify-content:center;margin:15px 0}
+.tab{background:#222;color:#fff;border:none;padding:10px 16px;border-radius:20px}
+.tab.active{background:#ff0000}
+input{width:100%;max-width:500px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:12px;font-size:16px}
+.btn{width:100%;max-width:500px;padding:16px;background:#ff0000;color:#fff;border:none;border-radius:12px;margin-top:12px;font-size:18px;font-weight:bold}
+.card{background:#111;border:1px solid #222;border-radius:12px;padding:15px;margin:15px auto;max-width:600px;text-align:right;white-space:pre-wrap}
 </style>
 </head>
 <body>
-<h1>DARAE <span style="color:red">V16</span> REAL SERVER</h1>
-<p>فحص سيرفر حقيقي - 20 فحص</p>
-<input id="url" placeholder="https://example.com/page.php">
-<button onclick="scan()">افحص مع السيرفر الحقيقي</button>
+<h1>DARAE <span>V16</span> REAL SERVER</h1>
+<div class="tabs"><button class="tab">ملف</button><button class="tab">كود</button><button class="tab active">رابط وتحليل مع سيرفر</button></div>
+<input id="url" placeholder="https://example.com/page.php" value="https://replit.com">
+<button class="btn" onclick="scan()">افحص مع السيرفر الحقيقي</button>
 <div id="res"></div>
 <script>
 async function scan(){
- let u=document.getElementById('url').value;
- if(!u) return alert('حط رابط');
- document.getElementById('res').innerHTML='جاري الفحص...';
- let r=await fetch('/api/scan.js?url='+encodeURIComponent(u));
- let j=await r.json();
- document.getElementById('res').innerHTML='<div class=card><h2>النتيجة: '+j.score+'/100 - '+j.status+'</h2><pre>'+JSON.stringify(j.vulnerabilities,null,2)+'</pre></div>';
+ let u=document.getElementById('url').value.trim();
+ if(!u){alert('حط رابط');return}
+ document.getElementById('res').innerHTML='<div class=card>جاري الفحص الحقيقي من السيرفر... ⏳</div>';
+ try{
+  let r=await fetch('/api/scan.js?url='+encodeURIComponent(u));
+  let j=await r.json();
+  let h=`<div class=card><h2>النتيجة: ${j.score}/100 - ${j.status}</h2><p>فحص: ${j.totalChecks} فحص - سيرفر حقيقي: ${j.realServerChecks?'نعم ✅':'لا'}</p>`;
+  if(j.vulnerabilities && j.vulnerabilities.length){ h+='<h3>الثغرات:</h3>'; j.vulnerabilities.forEach(v=>{h+=`<div style="background:#1a1a1a;padding:8px;margin:6px 0;border-right:3px solid ${v.severity=='Critical'?'red':'orange'}"><b>${v.type}</b> (${v.severity})<br><small>${v.evidence||''}</small><br><i style="color:#0f0">${v.fix||''}</i></div>`}); }else{ h+='<p style="color:#0f0">مافي ثغرات - آمن ✅</p>'; }
+  h+='<details><summary>السجلات</summary>'+JSON.stringify(j,null,2)+'</details></div>';
+  document.getElementById('res').innerHTML=h;
+ }catch(e){ document.getElementById('res').innerHTML='<div class=card style="color:red">خطأ: '+e.message+'</div>'; }
 }
 </script>
 </body>
