@@ -1,6 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/scan.js": { "maxDuration": 15 }
-  }
+  "version": 2
 }
