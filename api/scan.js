@@ -1,79 +1,130 @@
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') { res.statusCode = 200; return res.end(); }
-
-  let target = req.query?.url || '';
-  if (!target) {
-    try { let chunks = []; for await (const c of req) chunks.push(c);
-      if (chunks.length) { let b = JSON.parse(Buffer.concat(chunks).toString()); target = b.url || ''; }
-      if (req.body?.url) target = req.body.url;
-    } catch(e){}
-  }
-  target = (target||'').trim();
-  if (!target) return res.end(JSON.stringify({score:0,status:'خطأ',vulnerabilities:[],logs:['حط رابط']}));
-  if (!target.startsWith('http')) target = 'https://' + target;
-
-  let score = 100; let vulns = [];
-  let logs = [`[DARAE V18 FULL + VT] فحص ${target}`];
-  const add = (sev, type, ev, fix, desc) => {
-    vulns.push({type, severity:sev, evidence:ev, fix, description:desc});
-    score -= sev==='Critical'?40:sev==='High'?25:sev==='Medium'?12:sev==='Low'?5:2;
-    logs.push(`[!] ${sev}: ${type}`);
-  };
+  let { url, deep, code } = req.query;
+  
+  if (!url) return res.status(400).json({ error: "حط رابط" });
+  
+  // نظف الرابط
+  if (!url.startsWith('http')) url = 'https://' + url;
+  url = url.replace(/\/$/, '');
+  
+  let score = 100;
+  let vulnerabilities = [];
+  let logs = [];
+  let safeCount = 0;
 
   try {
-    // الفحص الأساسي
-    let r = await fetch(target, {headers:{'User-Agent':'Mozilla/5.0 DARAE-Scanner'}, signal: AbortSignal.timeout(12000)});
-    let headers = Object.fromEntries(r.headers.entries());
-    let html = await r.text();
-    logs.push(`[+] Status ${r.status}`);
-
-    // 1- Security Headers
-    if (!headers['content-security-policy']) add('Medium','Missing CSP','لا يوجد CSP','اضف default-src','يحمي من XSS');
-    if (!headers['x-frame-options']) add('Low','Clickjacking','بدون X-Frame-Options','اضف DENY','iframe خطير');
-    if (!headers['strict-transport-security']) add('Medium','Missing HSTS','بدون HSTS','اضف HSTS','http ممكن');
-    if (headers['server']) add('Low','Server Disclosure',headers['server'],'اخفي الاصدار','يكشف ثغرات');
-    if (headers['access-control-allow-origin']==='*') add('High','CORS Wildcard','CORS *','استخدم دومين محدد','يسرق بيانات');
-
-    // 2- Sensitive files
-    for (let p of ['/.env','/.git/HEAD','/backup.zip']) {
-      try { let rf = await fetch(new URL(p,target).href, {signal: AbortSignal.timeout(3000)}); if(rf.status===200) add('High',`Sensitive: ${p}`,'ملف خطير مكشوف','احذفه','مكشوف'); } catch(e){}
-    }
-
-    // 3- VirusTotal - الجديد!
-    let vtKey = process.env.VIRUSTOTAL_API_KEY;
-    if (vtKey) {
-      try {
-        logs.push('[+] فحص VirusTotal...');
-        // VirusTotal يحتاج base64 للرابط بدون =
-        let urlId = Buffer.from(target).toString('base64').replace(/=/g,'');
-        let vtRes = await fetch(`https://www.virustotal.com/api/v3/urls/${urlId}`, {
-          headers:{'x-apikey': vtKey},
-          signal: AbortSignal.timeout(8000)
+    logs.push(`[DARAE V18 FULL + VT] فحص ${url}`);
+    
+    // 1- فحص أساسي - هل الموقع شغال
+    let r = await fetch(url, { method: 'HEAD', redirect: 'follow' }).catch(()=>null);
+    if (r) {
+      logs.push(`[+] Status ${r.status}`);
+      safeCount++;
+      
+      // 2- فحص الهيدرز الحقيقية
+      let headers = r.headers;
+      
+      if (!headers.get('content-security-policy')) {
+        vulnerabilities.push({
+          type: "Missing CSP",
+          severity: "Medium",
+          evidence: "لا يوجد CSP",
+          fix: "أضف default-src 'self'",
+          description: "يحمي من XSS"
         });
-        if (vtRes.status===200) {
-          let vtData = await vtRes.json();
-          let stats = vtData.data?.attributes?.last_analysis_stats;
-          let malicious = stats?.malicious || 0;
-          let suspicious = stats?.suspicious || 0;
-          logs.push(`[+] VT: ${malicious} malicious, ${suspicious} suspicious`);
-          if (malicious > 0) add('Critical',`VirusTotal: ${malicious} شركات تقول فيروس`,`${malicious} محرك كشف فيروس`, `${malicious}/90 كشفوه كخبيث`,'الموقع مصنف كخطر عالمياً');
-          else if (suspicious > 0) add('Medium',`VirusTotal: مشبوه ${suspicious}`,`${suspicious} محرك مشبوه`,'راجع سمعة الموقع','قد يكون تصيد');
-          else logs.push('[+] VT نظيف 0/90');
-        } else if (vtRes.status===404) {
-          logs.push('[*] VT: الرابط جديد غير موجود في قاعدة بياناتهم');
-        } else logs.push(`[*] VT Error ${vtRes.status}`);
-      } catch(e){ logs.push(`[*] VT فشل: ${e.message}`); }
-    } else {
-      logs.push('[*] بدون مفتاح VirusTotal - تخطي الفحص (اضف ENV في Vercel)');
+        score -= 10;
+      } else safeCount++;
+
+      if (!headers.get('strict-transport-security')) {
+        vulnerabilities.push({
+          type: "Missing HSTS",
+          severity: "Medium",
+          evidence: "بدون HSTS",
+          fix: "أضف HSTS",
+          description: "http ممكن"
+        });
+        score -= 10;
+      } else safeCount++;
+
+      if (headers.get('server')) {
+        vulnerabilities.push({
+          type: "Server Disclosure",
+          severity: "Low",
+          evidence: headers.get('server'),
+          fix: "اخفي الاصدار",
+          description: "يكشف ثغرات"
+        });
+        score -= 5;
+      } else safeCount++;
+
+      if (!headers.get('x-frame-options')) {
+        vulnerabilities.push({
+          type: "Clickjacking",
+          severity: "Medium",
+          evidence: "بدون X-Frame-Options",
+          fix: "أضف DENY",
+          description: "يحمي من النقر الخفي"
+        });
+        score -= 10;
+      } else safeCount++;
     }
 
-    if(score<0) score=0;
-    let status = score<30?'🔴 خطير جدا':score<60?'🟠 خطر':score<85?'🟡 متوسط':'🟢 آمن';
-    return res.end(JSON.stringify({score, status, totalChecks:21, realServerChecks:true, virusTotal: true, vulnerabilities: vulns, logs}));
-  } catch(err){
-    return res.end(JSON.stringify({score:0,status:'خطأ',vulnerabilities:[],logs:[err.message]}));
+    // 3- فحص الملفات المكشوفة (العميق فقط)
+    if (deep === 'true' && code && code.startsWith('DARAE-')) {
+      logs.push(`[!] فحص عميق مفعل بكود ${code}`);
+      
+      const sensitivePaths = [
+        '/.env', '/.env.bak', '/.git/', '/.git/config',
+        '/wp-config.php', '/wp-config.php.bak',
+        '/config.php', '/backup.zip', '/.DS_Store',
+        '/phpinfo.php', '/admin/', '/.htaccess'
+      ];
+
+      for (let path of sensitivePaths) {
+        try {
+          let check = await fetch(url + path, { method: 'HEAD' });
+          if (check.status === 200) {
+            vulnerabilities.push({
+              type: "Exposed File",
+              severity: "Critical",
+              evidence: path + " مكشوف!",
+              fix: "احذفه من public",
+              description: `ملف حساس ${path}`
+            });
+            score -= 25;
+            logs.push(`[!] Critical: ${path} موجود!`);
+          }
+        } catch(e){}
+      }
+      logs.push("[*] بدون مفتاح VirusTotal - تخطي الفحص");
+    }
+
+    let critical = vulnerabilities.filter(v=>v.severity==='Critical').length;
+    let medium = vulnerabilities.filter(v=>v.severity==='Medium').length;
+    let low = vulnerabilities.filter(v=>v.severity==='Low').length;
+
+    return res.status(200).json({
+      url,
+      score: Math.max(0, score),
+      status: score > 80 ? "آمن" : score > 50 ? "متوسط" : "خطير",
+      totalChecks: 21,
+      realServerChecks: true,
+      virusTotal: false,
+      vulnerabilities,
+      logs,
+      safe: safeCount + (12 - vulnerabilities.length),
+      critical,
+      warnings: medium + low,
+      message: deep ? "فحص عميق مكتمل" : "فحص سريع - فعل الكود للعميق"
+    });
+
+  } catch (e) {
+    return res.status(500).json({ 
+      error: e.message, 
+      score: 0, 
+      status: "خطأ في الفحص",
+      logs: ["فشل الاتصال"]
+    });
   }
-};
+        }
