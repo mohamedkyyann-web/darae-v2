@@ -1,1 +1,48 @@
-
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DARAE V25 - فحص شامل</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#070a12;color:#e8e8e8;font-family:Tahoma;min-height:100vh}
+.header{text-align:center;padding:25px;background:linear-gradient(135deg,#0a0f1e,#101a33);border-bottom:2px solid #00ff88}
+.header h1{margin:0;font-size:28px;color:#00ff88;text-shadow:0 0 15px #00ff88}
+.header p{color:#8892b0;margin:5px 0 0}
+.card{max-width:650px;margin:20px auto;background:#111827;border:1px solid #1f2937;border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+input{width:100%;padding:14px;margin:8px 0;border-radius:10px;background:#0b1220;color:#fff;border:1px solid #1e3a5f;outline:none;font-size:14px}
+input:focus{border-color:#00ff88}
+.btn{width:100%;padding:14px;border:none;border-radius:10px;font-weight:bold;font-size:16px;cursor:pointer;margin-top:10px}
+.btn-scan{background:linear-gradient(90deg,#00ff88,#00c853);color:#000}
+.btn-scan:hover{transform:scale(1.02)}
+.result{margin-top:20px;padding:15px;border-radius:10px;background:#0b1220;display:none}
+.badge{display:inline-block;padding:5px 12px;border-radius:20px;font-size:12px;margin:3px}
+.high{background:#ff1744}.medium{background:#ff9100}.low{background:#00c853}
+.log{font-family:monospace;font-size:12px;color:#8892b0;background:#000;padding:10px;border-radius:8px;margin-top:10px;max-height:200px;overflow:auto;text-align:left;direction:ltr}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🛡️ DARAE V25</h1>
+<p>نظام الفحص الأمني الشامل - 12 فحص حقيقي</p>
+</div>
+<div class="card">
+<input id="url" placeholder="https://example.com أو http://testphp.vulnweb.com/listproducts.php?cat=1" value="http://testphp.vulnweb.com/listproducts.php?cat=1">
+<input id="code" placeholder="كود التفعيل DARAE-XXXX" value="DARAE-TEST">
+<button class="btn btn-scan" onclick="scan()">🚀 ابدأ الفحص الشامل</button>
+<div id="out" class="result"></div>
+</div>
+<script>
+async function scan(){
+let u=document.getElementById('url').value,c=document.getElementById('code').value,out=document.getElementById('out');
+if(!u){alert('حط رابط');return;}
+out.style.display='block'; out.innerHTML='⏳ جاري فحص 12 ثغرة حقيقية... قد يأخذ 15 ثانية';
+try{
+let r=await fetch(`/api/scan?url=${encodeURIComponent(u)}&code=${encodeURIComponent(c)}`);
+let d=await r.json();
+let findingsHtml=d.findings.map(f=>`<div style="border-right:3px solid ${f.risk=='high'?'#ff1744':'#ff9100'};padding:8px;margin:6px 0;background:#0f172a;border-radius:6px"><b class="badge ${f.risk}">${f.risk}</b> ${f.name}<br><small style="color:#8892b0">${f.location}</small><br><small>الحل: ${f.fix}</small></div>`).join('')||'<div style="color:#00ff88">✓ لم يتم العثور على ثغرات خطيرة</div>';
+out.innerHTML=`<h3>${d.label}</h3><p>الهدف: ${d.target}</p>${findingsHtml}<div class="log">${d.logs.join('<br>')}</div><p><small>OWASP: ${d.owasp} | CWE: ${d.cwe} | فحوصات: ${d.totalChecks}</small></p>`;
+}catch(e){out.innerHTML='❌ خطأ: '+e.message;}
+}
+</script>
+</body>
+</html>
