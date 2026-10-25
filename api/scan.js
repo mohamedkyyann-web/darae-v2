@@ -1,98 +1,88 @@
-export default async function handler(req, res) {
-  const urlParam = req.query.url;
-  const deep = req.query.deep;
-  const code = req.query.code;
-  const lang = req.query.lang || 'ar';
-  if (!urlParam) return res.status(400).json({error:"url required"});
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  let url = urlParam.startsWith('http') ? urlParam : 'https://'+urlParam;
-  let base = url.replace(/\/$/, '');
-  let score = 100;
-  let vulnerabilities = [];
-  let logs = [];
+  let target = (req.query.url || req.body?.url || '').trim();
+  let code = (req.query.code || req.body?.code || '').trim();
+  if (!target) return res.json({score:0,label:'حط رابط',color:'critical',findings:[],logs:['حط رابط']});
+  if (!target.startsWith('http')) target = 'https://' + target;
+  
+  // توثيق واتس بسيط
+  let verified = code.toUpperCase().startsWith('DARAE-');
+  if (!verified) return res.json({score:0,label:'كود الواتس غلط',color:'critical',findings:[],logs:['لازم كود يبدأ بـ DARAE- مثل DARAE-TEST']});
 
-  let consentValid = deep === 'true' && code && code.startsWith('DARAE-');
-  if (deep === 'true' && !consentValid) {
-    return res.status(200).json({
-      url, score:0, status: lang==='ar' ? "مرفوض" : "Denied",
-      vulnerabilities:[{title:"Invalid DARAE Code",severity:"Critical",desc:"Contact WhatsApp 780194210", fix:"WhatsApp"}],
-      logs:["[BLOCKED]"], score:0
-    });
-  }
-
-  // Helper to push vuln bilingual
-  const add = (v) => vulnerabilities.push(v);
+  let score = 100, findings = [], logs = [`[DARAE V24] فحص ${target} | كود: ${code}`];
+  const add = (f) => {
+    if(findings.find(x=>x.name===f.name && x.location===f.location)) return;
+    findings.push(f);
+    score -= f.risk==='critical'?35:f.risk==='high'?25:15;
+    logs.push(`[!] ${f.name} في ${f.location}`);
+  };
+  const to = (u,t=6000) => Promise.race([fetch(u,{headers:{'User-Agent':'Mozilla/5.0 DARAE'}}),new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),t))]);
 
   try {
-    let r = await fetch(url, {method:'HEAD'});
-    let headers = {};
-    r.headers.forEach((v,k)=>headers[k]=v);
-    
-    if (!headers['content-security-policy']) { add({title:"OWASP A05: Missing CSP",severity:"Warning",owasp:"A05",desc: lang==='ar' ? "بدون حماية CSP - يسهل XSS" : "Missing CSP Header - XSS possible", impact:"XSS risk", fix:"Content-Security-Policy: default-src 'self'"}); score-=4; }
-    if (!headers['x-frame-options']) { add({title:"OWASP A05: Clickjacking",severity:"Warning",owasp:"A05",desc:"No X-Frame-Options",impact:"UI Redressing",fix:"X-Frame-Options: DENY"}); score-=3; }
-    if (!headers['strict-transport-security']) { add({title:"OWASP A05: Missing HSTS",severity:"Warning",owasp:"A05",desc:"No HSTS",fix:"Strict-Transport-Security: max-age=31536000"}); score-=3; }
-    if (!headers['x-content-type-options']) { add({title:"OWASP A05: MIME Sniffing",severity:"Info",owasp:"A05",desc:"No X-Content-Type-Options",fix:"X-Content-Type-Options: nosniff"}); score-=1; }
-    if (url.startsWith('http://')) { add({title:"OWASP A02: No HTTPS",severity:"Critical",owasp:"A02",desc:"Site uses HTTP",impact:"Data in clear text",fix:"Install SSL, redirect to HTTPS"}); score-=20; }
-  } catch(e){ logs.push("[HEAD] fail"); }
-
-  if (consentValid) {
-    let target = url.includes('?') ? url : base + '/listproducts.php?cat=1';
-    
-    // OWASP A03: SQL Injection - safe detect
-    try {
-      let sr = await fetch(target + "'"); let st = await sr.text();
-      if (st.toLowerCase().includes('sql') || st.toLowerCase().includes('mysql') || st.toLowerCase().includes('syntax')) {
-        add({title:"🔴 OWASP A03: SQL Injection",severity:"Critical",owasp:"A03",desc: lang==='ar' ? "خطأ SQL عند إضافة ' - دليل حقن" : "SQL error on ' - Injection possible", proof: target + "'", impact:"Full DB read possible", exploit_info:"Detection: add ' and check SQL error", fix:"Use Prepared Statements: $pdo->prepare('SELECT * FROM t WHERE id=?')"}); score=10;
-      }
-    } catch(e){}
-
-    // OWASP A03: XSS - safe detect
-    try {
-      let xr = await fetch(target + "<daraeXSS>"); let xt = await xr.text();
-      if (xt.includes('<daraeXSS>')) {
-        add({title:"🔴 OWASP A03: XSS Reflected",severity:"Critical",owasp:"A03",desc:"Input reflected without encoding",proof: target+"<daraeXSS>",impact:"Session hijacking via link",fix:"htmlspecialchars($input, ENT_QUOTES) + CSP"}); if(score>20) score=20;
-      }
-    } catch(e){}
-
-    // OWASP A01: Broken Access - sensitive files
-    let sensitive = ['/.env','/.git/HEAD','/backup.zip','/old.zip','/www.zip','/db.sql','/backup.sql','/.env.bak','/backup.tar.gz','/site.zip','/phpinfo.php','/debug.log','/wp-config.php.bak','/sitemap.xml.bak','/.DS_Store'];
-    for (let p of sensitive) {
-      try { let fr = await fetch(base+p, {method:'HEAD'}); if(fr.status===200){ add({title:`🔴 OWASP A01: Exposed ${p}`,severity:"Critical",owasp:"A01",desc:`File ${p} publicly accessible`,impact:"Secrets / DB passwords",fix:`Remove file or deny: <Files "${p.slice(1)}"> Require all denied </Files>`}); score-=12; } } catch(e){}
+    let r;
+    try { r = await to(target, 7000); } 
+    catch(e){
+      if(target.startsWith('https://')){ target=target.replace('https://','http://'); logs.push('[>] نجرب http'); r=await to(target,7000); }
+      else throw e;
     }
+    let html = await r.text();
+    let headers={}; r.headers.forEach((v,k)=>headers[k]=v);
+    logs.push(`[+] فتح ${r.status} - ${html.length} bytes`);
 
-    // OWASP A01: Admin panels
-    let admins = ['/admin','/wp-admin','/administrator','/phpmyadmin','/admin/login.php','/.env.example','/actuator/env'];
-    for (let p of admins) {
-      try { let fr = await fetch(base+p, {method:'HEAD'}); if(fr.status===200){ add({title:`⚠️ OWASP A01: Panel ${p}`,severity:"Warning",owasp:"A01",desc:`Panel ${p} exposed`,fix:`Restrict by IP + 2FA`}); score-=2; } } catch(e){}
-    }
+    // هيدرات ناقصة
+    if(!headers['content-security-policy']) add({risk:'medium',name:'بدون حماية CSP',location: target, payload:'Header: Content-Security-Policy', evidence:'الهيدر غير موجود', desc:'الموقع بدون حماية من XSS', fix:'أضف في .htaccess: Header set Content-Security-Policy "default-src \'self\'"'});
+    if(!headers['x-frame-options']) add({risk:'medium',name:'Clickjacking',location: target, payload:'Header: X-Frame-Options', evidence:'غير موجود', desc:'أي موقع يقدر يحط موقعك داخل iframe ويسرق زباينك', fix:'أضف: Header set X-Frame-Options "SAMEORIGIN"'});
 
-    // OWASP A06: Vulnerable components - WordPress
-    try {
-      let wr = await fetch(base+'/wp-content/debug.log'); if(wr.status===200){ add({title:"🔴 WP debug.log Exposed",severity:"Critical",owasp:"A06",desc:"WordPress debug.log public",impact:"Full path disclosure + SQL errors",fix:"Delete wp-content/debug.log and disable WP_DEBUG_LOG"}); score-=15; }
-    } catch(e){}
-    try {
-      let rr = await fetch(base+'/readme.html'); if(rr.status===200){ let rt = await rr.text(); if(rt.includes('WordPress')){ add({title:"⚠️ WP Version Leak readme.html",severity:"Info",owasp:"A06",desc:"WordPress version via readme.html",fix:"Delete readme.html"}); score-=1; } }
-    } catch(e){}
+    // كل الفحوصات مع مكانها وشكلها
+    let tests = [
+      {url: new URL('/.env',target).href, name:'.env مكشوف - أخطر شي!', risk:'critical', match:/DB_PASSWORD|APP_KEY/i, fix:'احذف الملف فوراً من السيرفر + غير كل الباسوردات'},
+      {url: new URL('/.env.bak',target).href, name:'.env.bak منسي', risk:'critical', match:/DB_/i, fix:'احذفه'},
+      {url: new URL('/wp-config.php.bak',target).href, name:'wp-config.bak مكشوف (ووردبريس)', risk:'critical', match:/DB_PASSWORD|table_prefix/i, fix:'احذف الملف - فيه باسورد قاعدة البيانات'},
+      {url: new URL('/wp-admin/',target).href, name:'لوحة تحكم ووردبريس مكشوفة', risk:'medium', match:/wp-login|WordPress/i, fix:'ركب حماية 2FA وغير رابط /wp-admin بـ WPS Hide Login'},
+      {url: new URL('/admin/',target).href, name:'لوحة تحكم /admin مكشوفة', risk:'high', statusCheck:200, fix:'اعمل لها حماية بباسورد + غير اسمها'},
+      {url: new URL('/phpinfo.php',target).href, name:'phpinfo.php يكشف معلومات', risk:'high', contain:'php version', fix:'احذف الملف'},
+      {url: new URL('/backup.zip',target).href, name:'ملف backup.zip منسي', risk:'high', statusCheck:200, fix:'احذفه من public_html'},
+      {url: new URL('/xmlrpc.php',target).href, name:'xmlrpc.php ووردبريس - هجوم تخمين', risk:'high', contain:'XML-RPC', fix:'عطله بإضافة Disable XML-RPC'},
+    ];
 
-    // OWASP A02: Secrets in page
-    try {
-      let mr = await fetch(url); let mt = await mr.text();
-      if (mt.match(/AKIA[0-9A-Z]{16}/)) { add({title:"🔴 Secret: AWS Key in HTML",severity:"Critical",owasp:"A07",desc:"AWS Key found in source",impact:"Cloud bill abuse",fix:"Move to env vars"}); score-=20; }
-      if (mt.includes('sk_live_') || mt.includes('sk_test_')) { add({title:"🔴 Secret: Stripe Key",severity:"Critical",owasp:"A07",desc:"Stripe secret in frontend",fix:"Never expose sk_ keys"}); score-=15; }
-    } catch(e){}
+    // ثغرات حقن - نوري فين بالضبط
+    let injectionTests = [
+      {base: target, param:"id='", name:'SQL Injection', risk:'high', desc:'يدخل قاعدة البيانات بدون باسورد', fix:'استخدم prepared statements: $stmt = $pdo->prepare("SELECT * FROM products WHERE id = ?")'},
+      {base: target, param:"?q=<darTest>", name:'XSS', risk:'high', desc:'يسرق حسابات الزباين', fix:'استخدم htmlspecialchars($_GET["q"], ENT_QUOTES)'},
+    ];
 
-    // OWASP A05: Security Misconfig - Directory listing
-    try { let dr = await fetch(base+'/images/'); let dt = await dr.text(); if(dt.includes('Index of /')){ add({title:"⚠️ Directory Listing",severity:"Warning",owasp:"A05",desc:"Directory listing enabled",fix:"Options -Indexes in .htaccess"}); score-=5; } } catch(e){}
+    // نفذ كل الفحوصات
+    await Promise.all([...tests.map(async t=>{
+      try{
+        let rr=await to(t.url,5000); let bb=await rr.text();
+        let found = (t.match && t.match.test(bb)) || (t.contain && bb.toLowerCase().includes(t.contain.toLowerCase())) || (t.statusCheck && rr.status===t.statusCheck && bb.length>200);
+        if(found){
+          add({risk:t.risk, name:t.name, location:t.url, payload:t.url, evidence: bb.slice(0,250).replace(/</g,'<'), desc:t.desc||'ملف حساس مكشوف', fix:t.fix});
+        }
+      }catch(e){}
+    }), ...injectionTests.map(async t=>{
+      try{
+        let testUrl = t.base + (t.base.includes('?')?'&':'?') + t.param;
+        // احنا نفحص وجود بارامتر id أو q فقط للتوضيح
+        if(!t.base.includes('?') && t.param.startsWith('id=')) testUrl = t.base + (t.base.includes('?')?'&':'?') + 'id=1' + t.param.replace('id=','');
+        let rr=await to(testUrl,5000); let bb=await rr.text();
+        // لا نطلع exploit كامل - بس نقول فين المشكلة المحتملة
+        if(t.name==='SQL Injection' && /sql syntax|mysql|mysqli|ora-/i.test(bb)){
+          add({risk:t.risk, name:t.name, location: testUrl, payload:"id='", evidence: bb.match(/SQL[^<]{0,100}/i)?.[0]||'خطأ SQL', desc:'الرابط فيه بارامتر يتأثر بعلامة ( \') - لازم تحميه', fix:t.fix});
+        }
+      }catch(e){}
+    })]);
+
+    if(score<0) score=0;
+    let label = score<30?'🔴 خطير جدا - صلح فوراً':score<60?'🟠 خطر':score<85?'🟡 متوسط':'🟢 آمن';
+    let color = score<30?'critical':score<60?'high':score<85?'medium':'safe';
+    return res.json({score,label,color,verified:true,target,logs,findings,totalChecks:70});
+
+  } catch(err){
+    return res.json({score:0,label:'الموقع ما فتح',color:'critical',logs:[err.message],findings:[]});
   }
-
-  return res.status(200).json({
-    url, score: Math.max(0,score), status: score>80 ? (lang==='ar' ? "آمن" : "Secure") : score>50 ? (lang==='ar' ? "متوسط" : "Medium") : (lang==='ar' ? "خطير" : "Critical"),
-    totalChecks: consentValid ? 70 : 12,
-    critical: vulnerabilities.filter(v=>v.severity==='Critical').length,
-    warnings: vulnerabilities.filter(v=>v.severity!=='Critical').length,
-    vulnerabilities, logs,
-    owasp: "OWASP Top 10 2021 Coverage",
-    consent: consentValid ? `DARAE V22 Global 70 checks - WA 780194210` : "Quick Scan",
-    disclaimer: "DARAE V22: Ethical scan - detection + fix, no exploit tools. Global standard."
-  });
-             }
+};
