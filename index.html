@@ -1,38 +1,26 @@
-<!-- زر طلب فحص هجومي -->
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARAE Scanner - فحص هجومي</title>
+<style>
+body{background:#0a0a0a;color:#fff;font-family:system-ui;padding:20px}
+input,button{padding:12px;border-radius:8px;border:none;margin:5px 0}
+input{width:90%;background:#222;color:#fff}
+button{cursor:pointer}
+#deepBox{border:2px solid #ef4444;padding:15px;border-radius:10px;background:#1a0000;margin-top:15px;display:none}
+</style>
+</head>
+<body>
+<h2>🔍 DARAE - فحص موقعك قبل الهكر</h2>
+<input id="urlInput" placeholder="مثال: https://example.com أو testphp.vulnweb.com/listproducts.php?cat=1" oninput="updateWALink()">
+
 <div style="margin:15px 0">
-  <button onclick="document.getElementById('deepBox').style.display='block'" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:8px 15px;border-radius:8px">🔓 طلب فحص هجومي (مثل الهكر قبل الهكر)</button>
-  <a id="waBtn" href="#" target="_blank" style="background:#22c55e;color:white;padding:8px 15px;border-radius:8px;text-decoration:none;margin-left:10px">💬 واتساب توثيق</a>
+<button onclick="doScan()" style="background:#22c55e;color:#fff;padding:10px 20px">فحص سريع مجاني</button>
+<button onclick="document.getElementById('deepBox').style.display='block'" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:10px">🔓 طلب فحص هجومي</button>
+<a id="waBtn" href="https://wa.me/967780194210" target="_blank" style="background:#25D366;color:#fff;padding:10px 15px;border-radius:8px;text-decoration:none">💬 واتساب 780194210</a>
 </div>
 
-<div id="deepBox" style="display:none;border:2px solid #ef4444;padding:15px;border-radius:10px;background:#1a0000;margin-top:10px">
-  <h3 style="color:#ef4444">🔴 فحص هجومي بتوثيق - قبل ما يدخل الهكر</h3>
-  <p style="color:#ccc;font-size:13px;line-height:1.6">
-  الزبون يثبت ملكيته في دقيقتين بدون رفع ملف:<br>
-  📸 سكرين cPanel يظهر الدومين / 📧 ايميل من admin@دومينك / 🎥 فيديو 10 ثواني للوحة التحكم<br>
-  بعدها تحصل كود DARAE صالح 24 ساعة لموقعك فقط.
-  </p>
-  <input id="codeInput" placeholder="الصق كود DARAE-XXXX هنا" style="width:100%;padding:10px;margin:8px 0;border-radius:5px;border:none">
-  <button onclick="doDeepScan()" style="width:100%;background:#ef4444;color:white;padding:10px;border:none;border-radius:5px;font-weight:bold">ابدأ الفحص الهجومي الآن</button>
-  <div style="margin-top:10px;background:#111;border:1px dashed #f59e0b;padding:10px;border-radius:5px;font-size:12px;color:#aaa">
-  <b style="color:#f59e0b">أمانة ماذا نفحص؟</b><br>
-  <span style="color:#22c55e">✅ نفحص:</span> هيدرز، ملفات .env، SQL بـ ' ، XSS<br>
-  <span style="color:#ef4444">❌ لا نفحص:</span> Stored XSS, RCE, IDOR, تخطي دخول - تحتاج فحص يدوي خاص
-  </div>
-</div>
-
-<script>
-let currentUrlForWA = "";
-function updateWALink(){
-  let url = document.getElementById('urlInput').value || "موقعي";
-  currentUrlForWA = url;
-  let msg = `السلام عليكم، اريد فحص هجومي (مثل الهكر قبل الهكر) لموقعي: ${url} - مستعد لارسال سكرين cPanel لاثبات الملكية`;
-  document.getElementById('waBtn').href = `https://wa.me/967780194210?text=${encodeURIComponent(msg)}`;
-}
-document.getElementById('urlInput')?.addEventListener('input', updateWALink);
-function doDeepScan(){
-  let url = document.getElementById('urlInput').value;
-  let code = document.getElementById('codeInput').value;
-  if(!url || !code) return alert("ادخل الرابط والكود");
-  window.location.href = `/api/scan?url=${encodeURIComponent(url)}&deep=true&code=${encodeURIComponent(code)}`;
-}
-                                 </script>
+<div id="deepBox">
+<h3 style="color:#ef4444">🔴 فحص هجومي بتوثيق - قبل ما يدخل
