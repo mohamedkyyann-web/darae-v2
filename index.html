@@ -3,68 +3,57 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARAE - فحص موقعك قبل الهكر</title>
+<title>DARAE V21 - 40 فحص</title>
 <style>
 *{box-sizing:border-box}
-body{background:#0a0a0a;color:#fff;font-family:system-ui,Tahoma;padding:15px;margin:0;direction:rtl}
-h2{text-align:center;font-size:20px;margin:15px 0}
-#urlInput{width:100%;padding:14px;border-radius:10px;border:1px solid #333;background:#1a1a1a;color:#fff;font-size:14px;text-align:left;direction:ltr}
+body{background:#0a0a0a;color:#fff;font-family:system-ui;padding:15px;margin:0}
+h2{text-align:center}
+#urlInput{width:100%;padding:14px;border-radius:10px;border:1px solid #333;background:#1a1a1a;color:#fff;direction:ltr}
 .btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:15px 0}
-.btns button,.btns a{flex:1;min-width:140px;padding:12px 10px;border-radius:10px;border:none;font-size:13px;font-weight:bold;text-align:center;text-decoration:none;cursor:pointer}
+.btns button,.btns a{flex:1;min-width:140px;padding:12px;border-radius:10px;border:none;font-weight:bold;text-align:center;text-decoration:none;cursor:pointer}
 .btn-green{background:#22c55e;color:#fff}
 .btn-dark{background:#222;border:1px solid #ef4444 !important;color:#ef4444}
 .btn-wa{background:#25D366;color:#fff}
 #deepBox{display:none;border:2px solid #ef4444;padding:15px;border-radius:12px;background:#1a0000;margin-top:15px}
 #deepBox input{width:100%;padding:12px;border-radius:8px;border:none;background:#111;color:#fff;margin:10px 0}
-#result{margin-top:15px;background:#111;padding:12px;border-radius:10px;white-space:pre-wrap;font-size:13px;word-break:break-all}
+.card{border-radius:10px;padding:12px;margin:10px 0;background:#111}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;margin-left:5px}
 </style>
 </head>
 <body>
-
-<h2>🔍 DARAE - فحص موقعك قبل الهكر</h2>
-
+<h2>🔍 DARAE V21 - 40 فحص يسبق الهكر</h2>
 <input id="urlInput" placeholder="https://example.com" oninput="updateWALink()" value="https://dkyyann-web.vercel.app">
-
 <div class="btns">
-  <button class="btn-green" onclick="doScan()">فحص سريع مجاني</button>
-  <button class="btn-dark" onclick="document.getElementById('deepBox').style.display='block'">🔓 طلب فحص هجومي</button>
+  <button class="btn-green" onclick="doScan()">فحص سريع (8)</button>
+  <button class="btn-dark" onclick="document.getElementById('deepBox').style.display='block'">🔓 فحص قوي (40)</button>
   <a id="waBtn" class="btn-wa" href="https://wa.me/967780194210" target="_blank">واتساب 780194210</a>
 </div>
-
 <div id="deepBox">
-  <h3 style="color:#ef4444;margin:0 0 10px 0">🔴 فحص هجومي بتوثيق</h3>
-  <p style="color:#ccc;font-size:12px;line-height:1.6;margin:0">بدون رفع ملف - فقط سكرين cPanel. بعدها تحصل كود DARAE صالح 24 ساعة لموقعك فقط.</p>
-  <input id="codeInput" placeholder="الصق كود DARAE-XXXX هنا">
-  <button onclick="doDeepScan()" style="width:100%;background:#ef4444;color:#fff;padding:12px;border-radius:8px;border:none;font-weight:bold">ابدأ الفحص الهجومي الآن</button>
-  <div style="margin-top:10px;background:#0a0a0a;border:1px dashed #f59e0b;padding:8px;border-radius:6px;font-size:11px;color:#999">
-    ✅ نفحص: .env, SQL بـ ' , XSS | ❌ لا نفحص: RCE, IDOR (تحتاج فحص خاص)
-  </div>
+  <h3 style="color:#ef4444;margin:0">🔴 فحص 40 نقطة - 780194210</h3>
+  <p style="color:#ccc;font-size:12px">فحص: SQL/XSS/نسخ احتياطي/لوحات تحكم/مفاتيح AWS. أرسل سكرين cPanel واتساب تحصل كود</p>
+  <input id="codeInput" placeholder="DARAE-XXXX">
+  <button onclick="doDeepScan()" style="width:100%;background:#ef4444;color:#fff;padding:12px;border-radius:8px;border:none;font-weight:bold">ابدأ فحص 40 نقطة</button>
 </div>
-
 <div id="result"></div>
-
 <script>
 function updateWALink(){
-  var el=document.getElementById('urlInput');
-  var url=el&&el.value?el.value:"موقعي";
-  var msg="السلام عليكم، اريد فحص هجومي لموقعي: "+url+" - مستعد لارسال سكرين cPanel";
-  var link="https://wa.me/967780194210?text="+encodeURIComponent(msg);
-  var btn=document.getElementById('waBtn');
-  if(btn) btn.href=link;
+  var el=document.getElementById('urlInput'); var url=el&&el.value?el.value:"موقعي";
+  var msg="السلام عليكم، اريد فحص DARAE V21 40 نقطة لموقعي: "+url+" - معي سكرين cPanel - 780194210";
+  document.getElementById('waBtn').href="https://wa.me/967780194210?text="+encodeURIComponent(msg);
 }
-function doScan(){
-  var url=document.getElementById('urlInput').value;
-  if(!url) return alert("ادخل الرابط");
-  document.getElementById('result').innerText="جاري الفحص...";
-  fetch("/api/scan?url="+encodeURIComponent(url)).then(r=>r.json()).then(d=>{document.getElementById('result').innerText=JSON.stringify(d,null,2)});
+function renderResult(d){
+  var r=document.getElementById('result');
+  var color = d.score>80 ? '#22c55e' : d.score>50 ? '#f59e0b' : '#ef4444';
+  var html = `<div class="card" style="border:2px solid ${color}"><h3 style="color:${color};margin:0">النتيجة: ${d.score}/100 - ${d.status}</h3><p style="font-size:12px;color:#aaa">فحوصات: ${d.totalChecks} | خطير: ${d.critical} | تحذير: ${d.warnings}</p><p style="font-size:10px;color:#666">${d.consent}</p></div>`;
+  (d.vulnerabilities||[]).forEach(v=>{
+    var c=v.severity=='Critical'?'#ef4444':'#f59e0b';
+    html+=`<div class="card" style="border-right:4px solid ${c}"><b style="color:${c}">${v.title}</b><br><span style="font-size:13px">${v.desc}</span>${v.proof?`<br><code style="font-size:11px;color:#f59e0b;word-break:break-all">دليل: ${v.proof}</code>`:''}${v.impact?`<br><span style="color:#ef4444;font-size:12px">⚠️ ${v.impact}</span>`:''}${v.exploit_info?`<br><span style="color:#aaa;font-size:11px;display:block;margin-top:6px;border-top:1px dashed #333;padding-top:6px">ℹ️ كيف ينتبه المطور: ${v.exploit_info}</span>`:''}${v.fix?`<br><div style="background:#052e16;border:1px solid #22c55e;padding:8px;border-radius:6px;margin-top:8px"><span style="color:#22c55e;font-size:12px;font-weight:bold">✅ الإصلاح:</span><br><span style="font-size:12px;color:#bbf7d0">${v.fix}</span></div>`:''}</div>`;
+  });
+  html+=`<details style="margin-top:15px"><summary style="color:#666;font-size:12px">سجل الفحص</summary><pre style="font-size:10px;color:#666;white-space:pre-wrap">${(d.logs||[]).join('\n')}</pre></details>`;
+  r.innerHTML=html;
 }
-function doDeepScan(){
-  var url=document.getElementById('urlInput').value;
-  var code=document.getElementById('codeInput').value;
-  if(!url||!code) return alert("ادخل الرابط والكود");
-  document.getElementById('result').innerText="جاري الفحص الهجومي...";
-  fetch("/api/scan?url="+encodeURIComponent(url)+"&deep=true&code="+encodeURIComponent(code)).then(r=>r.json()).then(d=>{document.getElementById('result').innerText=JSON.stringify(d,null,2)});
-}
+function doScan(){ var url=document.getElementById('urlInput').value; if(!url) return alert("ادخل الرابط"); document.getElementById('result').innerHTML="جاري الفحص..."; fetch("/api/scan?url="+encodeURIComponent(url)).then(r=>r.json()).then(renderResult); }
+function doDeepScan(){ var url=document.getElementById('urlInput').value; var code=document.getElementById('codeInput').value; if(!url||!code) return alert("ادخل الرابط والكود"); document.getElementById('result').innerHTML="جاري فحص 40 نقطة..."; fetch("/api/scan?url="+encodeURIComponent(url)+"&deep=true&code="+encodeURIComponent(code)).then(r=>r.json()).then(renderResult); }
 document.addEventListener('DOMContentLoaded', updateWALink);
 </script>
 </body>
