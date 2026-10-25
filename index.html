@@ -1,1 +1,38 @@
-<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DARAE V19</title><style>body{background:#070d07;color:#eee;font-family:system-ui;padding:14px;max-width:520px;margin:auto}h1{text-align:center;color:#00ff88}input{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#111;color:#fff;box-sizing:border-box}.btn{width:100%;padding:14px;border-radius:12px;border:none;font-weight:900;margin-top:10px;cursor:pointer}.scan{background:#00ff88;color:#000}.wa{background:#25D366;color:#fff;display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px;margin-top:10px;font-weight:900}.box{display:none;background:#101810;border:1px dashed #00ff88;padding:12px;border-radius:12px;margin-top:10px}.card{background:#111;border:1px solid #222;border-radius:14px;padding:12px;margin-top:12px;line-height:1.8}.crit{border-right:6px solid #ff2a2a;background:#1a0e0e}.med{border-right:6px solid #ffcc00;background:#1a1a0a}.low{border-right:6px solid #666}.top{display:flex;justify-content:space-between;background:#111;border:1px solid #00ff8844;border-radius:14px;padding:12px;margin-top:12px}.score{font-size:42px;font-weight:900;color:#00ff88}.link{display:block;background:#000;color:#00ff88;padding:8px;border-radius:8px;word-break:break-all;margin:8px 0;text-decoration:none;border:1px solid #00ff8833}</style></head><body><h1>🛡️ DARAE V19 - فحص هجومي مصرح</h1><input id="urlInput" value="https://darae-v2-nve1bx04-mohamedkyyann-web.vercel.app/product.php?id=5"><button class="btn scan" id="quick">🔍 فحص سريع</button><a class="wa" id="wa">💬 توثيق واتساب - فحص SQL و XSS حقيقي</a><div class="box" id="codeBox"><input id="codeInput" value="DARAE-1234" placeholder="DARAE-XXXX"><button class="btn scan" id="deep">🔓 فحص هجومي باذن المالك</button><small style="color:#888;display:block;margin-top:8px">بادخال الكود انت تعطي اذن لفحص موقعك فحصاً هجومياً آمناً</small></div><div id="out"></div><script>const WA="967780194210";document.getElementById('wa').onclick=function(){let u=document.getElementById('urlInput').value;this.href=`https://wa.me/${WA}?text=${encodeURIComponent("السلام عليكم، اريد فحص هجومي لموقعي باذني: "+u)}`;document.getElementById('codeBox').style.display='block'};async function run(deep){let u=document.getElementById('urlInput').value.trim();if(!u.startsWith('http'))u='https://'+u;u=u.replace(/\/+$/,'');let code=document.getElementById('codeInput').value;let api=`/api/scan?url=${encodeURIComponent(u)}`+(deep?`&deep=true&code=${code}`:'');let out=document.getElementById('out');out.innerHTML=`<div class="card">⏳ جاري فحص هجومي مصرح لـ ${u}...</div>`;try{let d=await fetch(api).then(r=>r.json());let html=`<div class="top"><div><b>📊 تقرير دارع V19</b><br><small>${d.url}</small><br><small>${d.totalChecks} فحص - ${d.consent}</small></div><div class="score">${d.score}</div></div><div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><span style="background:#ff2a2a33;color:#ff2a2a;padding:6px 10px;border-radius:20px;font-size:12px">🔴 ${d.critical} مصاب</span><span style="background:#ffcc0033;color:#ffcc00;padding:6px 10px;border-radius:20px;font-size:12px">🟡 ${d.warnings} تحذير</span><span style="background:#00ff8833;color:#00ff88;padding:6px 10px;border-radius:20px;font-size:12px">${d.status}</span></div>`;if(!d.vulnerabilities.length)html+=`<div class="card" style="border-right:6px solid #00ff88">✅ ${u} آمن - لم يتم تأكيد ثغرات هجومية</div>`;else d.vulnerabilities.forEach(v=>{let cls=v.severity==='Critical'?'crit':v.severity==='Medium'?'med':'low';let icon=v.severity==='Critical'?'🔴':v.severity==='Medium'?'🟡':'⚪';html+=`<div class="card ${cls}"><b>${icon} ${v.type}</b><br><a class="link" href="${v.fullUrl}" target="_blank">🔗 ${v.evidence} ↗️</a><small><b>الخطر:</b> ${v.description}<br><b style="color:#00ff88">✅ الحل:</b> ${v.fix}</small></div>`});html+=`<div class="card" style="font-size:11px;color:#888">✅ ${d.disclaimer}<br><br>${(d.logs||[]).join('<br>')}</div>`;out.innerHTML=html}catch(e){out.innerHTML=`<div class="card crit">❌ ${e.message}</div>`}}document.getElementById('quick').onclick=()=>run(false);document.getElementById('deep').onclick=()=>run(true);</script></body></html>
+<!-- زر طلب فحص هجومي -->
+<div style="margin:15px 0">
+  <button onclick="document.getElementById('deepBox').style.display='block'" style="background:#111;border:1px solid #ef4444;color:#ef4444;padding:8px 15px;border-radius:8px">🔓 طلب فحص هجومي (مثل الهكر قبل الهكر)</button>
+  <a id="waBtn" href="#" target="_blank" style="background:#22c55e;color:white;padding:8px 15px;border-radius:8px;text-decoration:none;margin-left:10px">💬 واتساب توثيق</a>
+</div>
+
+<div id="deepBox" style="display:none;border:2px solid #ef4444;padding:15px;border-radius:10px;background:#1a0000;margin-top:10px">
+  <h3 style="color:#ef4444">🔴 فحص هجومي بتوثيق - قبل ما يدخل الهكر</h3>
+  <p style="color:#ccc;font-size:13px;line-height:1.6">
+  الزبون يثبت ملكيته في دقيقتين بدون رفع ملف:<br>
+  📸 سكرين cPanel يظهر الدومين / 📧 ايميل من admin@دومينك / 🎥 فيديو 10 ثواني للوحة التحكم<br>
+  بعدها تحصل كود DARAE صالح 24 ساعة لموقعك فقط.
+  </p>
+  <input id="codeInput" placeholder="الصق كود DARAE-XXXX هنا" style="width:100%;padding:10px;margin:8px 0;border-radius:5px;border:none">
+  <button onclick="doDeepScan()" style="width:100%;background:#ef4444;color:white;padding:10px;border:none;border-radius:5px;font-weight:bold">ابدأ الفحص الهجومي الآن</button>
+  <div style="margin-top:10px;background:#111;border:1px dashed #f59e0b;padding:10px;border-radius:5px;font-size:12px;color:#aaa">
+  <b style="color:#f59e0b">أمانة ماذا نفحص؟</b><br>
+  <span style="color:#22c55e">✅ نفحص:</span> هيدرز، ملفات .env، SQL بـ ' ، XSS<br>
+  <span style="color:#ef4444">❌ لا نفحص:</span> Stored XSS, RCE, IDOR, تخطي دخول - تحتاج فحص يدوي خاص
+  </div>
+</div>
+
+<script>
+let currentUrlForWA = "";
+function updateWALink(){
+  let url = document.getElementById('urlInput').value || "موقعي";
+  currentUrlForWA = url;
+  let msg = `السلام عليكم، اريد فحص هجومي (مثل الهكر قبل الهكر) لموقعي: ${url} - مستعد لارسال سكرين cPanel لاثبات الملكية`;
+  document.getElementById('waBtn').href = `https://wa.me/967780194210?text=${encodeURIComponent(msg)}`;
+}
+document.getElementById('urlInput')?.addEventListener('input', updateWALink);
+function doDeepScan(){
+  let url = document.getElementById('urlInput').value;
+  let code = document.getElementById('codeInput').value;
+  if(!url || !code) return alert("ادخل الرابط والكود");
+  window.location.href = `/api/scan?url=${encodeURIComponent(url)}&deep=true&code=${encodeURIComponent(code)}`;
+}
+                                 </script>
